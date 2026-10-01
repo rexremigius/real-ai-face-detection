@@ -2,6 +2,8 @@ import os
 import numpy as np
 import streamlit as st
 import keras
+from PIL import Image
+from pathlib import Path
 
 os.environ["TF_NUM_INTEROP_THREADS"] = "1"
 os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
@@ -11,11 +13,21 @@ st.set_page_config(page_title="Real or AI?", layout="centered")
 N_ROUNDS = 10
 NAME = {0: "AI", 1: "Real"}
 
+DATA_DIR = Path("test_images")
+FOLDERS = {"ai": 0, "real": 1}          
+
 @st.cache_resource
 def load():
     model = keras.models.load_model("best_model.keras")
-    data = np.load("test_images.npz")
-    images, labels = data["images"], data["labels"].astype(int)
+
+    images, labels = [], []
+    for folder, label in FOLDERS.items():
+        for path in sorted((DATA_DIR / folder).glob("*.png")):
+            img = Image.open(path).convert("RGB").resize((128, 128))
+            images.append(np.array(img, dtype="uint8"))
+            labels.append(label)
+
+    images, labels = np.stack(images), np.array(labels)
     scores = model.predict(images.astype("float32"), verbose=0).ravel()
     return images, labels, scores
 
@@ -36,14 +48,12 @@ def guess(g):
     s.guess = g
     s.human += int(g == labels[i])
     s.model += int(preds[i] == labels[i])
-    s.history.append(
-        {
-            "Round": s.round + 1,
-            "Answer": NAME[labels[i]],
-            "You": NAME[g],
-            "Model": NAME[preds[i]],
-        }
-    )
+    s.history.append({
+        "Round": s.round + 1,
+        "Answer": NAME[labels[i]],
+        "You": NAME[g],
+        "Model": NAME[preds[i]],
+    })
 
 def next_image():
     s.round += 1
@@ -53,9 +63,7 @@ if "order" not in s:
     reset()
 
 st.title("Real or AI?")
-st.caption(
-    "Guess whether each face is a real photo or AI-generated. The model guesses too."
-)
+st.caption("Guess whether each face is a real photo or AI-generated. The model guesses too.")
 
 played = len(s.history)
 c1, c2, c3 = st.columns(3)
@@ -76,9 +84,7 @@ if s.round < N_ROUNDS:
         if s.guess is None:
             st.subheader("Your guess")
             st.button("Real", on_click=guess, args=(1,), use_container_width=True)
-            st.button(
-                "AI-Generated", on_click=guess, args=(0,), use_container_width=True
-            )
+            st.button("AI-Generated", on_click=guess, args=(0,), use_container_width=True)
         else:
             st.subheader(f"Answer: {NAME[labels[i]]}")
 
@@ -94,9 +100,7 @@ if s.round < N_ROUNDS:
             st.caption(f"Model score: {scores[i]:.2f}  (0 = AI, 1 = Real)")
 
             label = "See Results" if s.round + 1 == N_ROUNDS else "Next Image"
-            st.button(
-                label, on_click=next_image, type="primary", use_container_width=True
-            )
+            st.button(label, on_click=next_image, type="primary", use_container_width=True)
 else:
     st.divider()
     st.subheader("Final result")
